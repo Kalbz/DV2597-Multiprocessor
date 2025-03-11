@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -6,7 +5,7 @@
 #include <time.h>
 
 #define MATRIX_SIZE 2048
-#define NUM_THREADS 16
+#define NUM_THREADS 32
 
 double matrix[MATRIX_SIZE][MATRIX_SIZE];
 double b[MATRIX_SIZE];
@@ -61,7 +60,7 @@ void print_matrix() {
 
 
 void* gaussian_elimination_thread(void* arg) {
-    int thread_id = *((int*)arg);
+    int thread_id = ((int)arg);
 
     for (int k = 0; k < MATRIX_SIZE - 1; k++) {
         if (thread_id == 0) {
@@ -75,12 +74,20 @@ void* gaussian_elimination_thread(void* arg) {
 
         pthread_barrier_wait(&barrier);
 
-        // Optimization: Striped partitioning for better load balancing and data locality
-        int blockSize = (MATRIX_SIZE - (k + 1)) / NUM_THREADS;
-        int start = k + 1 + blockSize * thread_id;
-        int end = start + blockSize;
-        if (thread_id == NUM_THREADS - 1) end = MATRIX_SIZE; // Last thread takes the remainder
+        // Calculate the number of rows remaining to be processed
+        int rowsRemaining = MATRIX_SIZE - (k + 1);
 
+        // Calculate the number of rows per thread, rounding up to distribute any remainder
+        int rowsPerThread = (rowsRemaining + NUM_THREADS - 1) / NUM_THREADS;
+
+        // Calculate the start and end indices for this thread
+        int start = k + 1 + rowsPerThread * thread_id;
+        int end = start + rowsPerThread;
+
+        // Adjust end for the last thread or if the calculated end exceeds MATRIX_SIZE
+        if (thread_id == NUM_THREADS - 1 || end > MATRIX_SIZE) {
+            end = MATRIX_SIZE;
+        }
         for (int i = start; i < end; i++) {
             for (int j = k + 1; j < MATRIX_SIZE; j++) {
                 matrix[i][j] -= matrix[i][k] * matrix[k][j];
